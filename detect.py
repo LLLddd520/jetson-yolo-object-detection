@@ -1,67 +1,152 @@
 from ultralytics import YOLO
 import cv2
+import time
 
-
-# 加载训练好的模型
+# =========================
+# 1. 加载模型
+# =========================
 model = YOLO("best.pt")
 
+# =========================
+# 2. 分类别置信度阈值
+# =========================
+MOUSE_CONF = 0.20
+BOTTLE_CONF = 0.55
 
-# 打开外接摄像头
+# =========================
+# 3. 打开摄像头
+# =========================
 cap = cv2.VideoCapture(1)
 
+if not cap.isOpened():
+    print("Camera 1 open failed, trying camera 0...")
+    cap = cv2.VideoCapture(0)
 
-# 获取摄像头分辨率
-width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+if not cap.isOpened():
+    print("Camera open failed")
+    exit()
 
+print("Camera opened successfully")
+print(f"Mouse threshold  : {MOUSE_CONF}")
+print(f"Bottle threshold : {BOTTLE_CONF}")
+print("Press ESC to exit")
 
-# 创建视频保存对象
-fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-
-out = cv2.VideoWriter(
-    "result.mp4",
-    fourcc,
-    30,
-    (width, height)
-)
-
-
+# =========================
+# 4. 实时检测
+# =========================
 while True:
 
-    # 读取一帧摄像头画面
     ret, frame = cap.read()
 
     if not ret:
+        print("Failed to read camera frame")
         break
 
+    start_time = time.time()
 
-    # YOLO检测
-    results = model(frame)
-
-
-    # 绘制检测框、类别、置信度
-    annotated_frame = results[0].plot()
-
-
-    # 显示实时检测结果
-    cv2.imshow(
-        "YOLO Detection",
-        annotated_frame
+    # 必须低于 mouse 阈值
+    # 否则 mouse 会在这里提前被 YOLO 删除
+    results = model(
+        frame,
+        conf=0.15,
+        device=0,
+        verbose=False
     )
 
+    result = results[0]
 
-    # 保存当前这一帧
-    out.write(annotated_frame)
+    # =========================
+    # 5. 遍历检测结果
+    # =========================
+    for box in result.boxes:
 
+        cls_id = int(box.cls[0])
+        confidence = float(box.conf[0])
 
-    # 按q退出
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+        # ---------- mouse ----------
+        if cls_id == 0:
+
+            if confidence < MOUSE_CONF:
+                continue
+
+            label_name = "mouse"
+
+        # ---------- bottle ----------
+        elif cls_id == 1:
+
+            if confidence < BOTTLE_CONF:
+                continue
+
+            label_name = "bottle"
+
+        else:
+            continue
+
+        # 获取边界框
+        x1, y1, x2, y2 = map(
+            int,
+            box.xyxy[0].tolist()
+        )
+
+        # 画框
+        cv2.rectangle(
+            frame,
+            (x1, y1),
+            (x2, y2),
+            (0, 255, 0),
+            2
+        )
+
+        # 标签
+        label = f"{label_name} {confidence:.2f}"
+
+        cv2.putText(
+            frame,
+            label,
+            (x1, max(y1 - 10, 20)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 0),
+            2
+        )
+
+    # =========================
+    # 6. FPS
+    # =========================
+    elapsed = time.time() - start_time
+
+    if elapsed > 0:
+        fps = 1.0 / elapsed
+    else:
+        fps = 0.0
+
+    cv2.putText(
+        frame,
+        f"FPS: {fps:.1f}",
+        (20, 40),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1,
+        (0, 255, 0),
+        2
+    )
+
+    # =========================
+    # 7. 显示
+    # =========================
+    cv2.imshow(
+        "YOLO Detection",
+        frame
+    )
+
+    key = cv2.waitKey(1) & 0xFF
+
+    # ESC退出
+    if key == 27:
         break
 
 
-
-# 释放资源
+# =========================
+# 8. 释放资源
+# =========================
 cap.release()
-out.release()
-
 cv2.destroyAllWindows()
