@@ -29,7 +29,6 @@
 - `yolo_node.py`：ROS2 YOLO 检测节点
 - `RUN.md`：完整运行与检查步骤
 - `test_results/`：20 组 Jetson ROS2 实测截图及说明
-- `result.mp4`：检测结果视频
 - `ros2_detection.mp4`：ROS2 检测演示视频
 
 ## 快速运行
